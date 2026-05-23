@@ -55,7 +55,9 @@ public:
     size_t threads() const override
     {
 #       ifdef XMRIG_ALGO_GHOSTRIDER
+        // MoneroOcean: Flex/KCN is GhostRider family but does not use the helper thread.
         return ((m_algorithm.id() == Algorithm::GHOSTRIDER_RTM) && m_ghHelper) ? 2 : 1;
+        // End MoneroOcean
 #       else
         return 1;
 #       endif
@@ -83,6 +85,7 @@ private:
     void allocateCnCtx();
     void consumeJob();
 
+    alignas(8) uint8_t m_commitment[N * 32]{ 0 };
     alignas(8) uint8_t m_hash[N * 32]{ 0 };
     const Algorithm m_algorithm;
     const Assembly m_assembly;

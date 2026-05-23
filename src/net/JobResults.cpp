@@ -115,7 +115,7 @@ static inline void checkHash(const JobBundle &bundle, std::vector<JobResult> &re
 static void getResults(JobBundle &bundle, std::vector<JobResult> &results, uint32_t &errors, bool hwAES)
 {
     const auto &algorithm = bundle.job.algorithm();
-    auto memory           = new VirtualMemory(algorithm.l3(), false, false, false);
+    auto memory           = new VirtualMemory(algorithm.l3(), false, false, false, 0, VirtualMemory::kDefaultHugePageSize);
     alignas(16) uint8_t hash[32]{ 0 };
 
     if (algorithm.family() == Algorithm::RANDOM_X) {
@@ -133,7 +133,9 @@ static void getResults(JobBundle &bundle, std::vector<JobResult> &results, uint3
         for (uint32_t nonce : bundle.nonces) {
             *bundle.job.nonce() = nonce;
 
+            // MoneroOcean: RandomX hashing needs the active algorithm for fork variants.
             randomx_calculate_hash(vm, bundle.job.blob(), bundle.job.size(), hash, algorithm);
+            // End MoneroOcean
 
             checkHash(bundle, results, nonce, hash, errors);
         }
@@ -317,7 +319,9 @@ void xmrig::JobResults::done(const Job &job)
 
 void xmrig::JobResults::setListener(IJobResultListener *listener, bool hwAES)
 {
+    // MoneroOcean: algo benchmark/runtime reinitialization can replace the result handler.
     if (handler) delete handler;
+    // End MoneroOcean
 
     handler = new JobResultsPrivate(listener, hwAES);
 }
@@ -339,9 +343,9 @@ void xmrig::JobResults::submit(const Job &job, uint32_t nonce, const uint8_t *re
 }
 
 
-void xmrig::JobResults::submit(const Job& job, uint32_t nonce, const uint8_t* result, const uint8_t* miner_signature)
+void xmrig::JobResults::submit(const Job& job, uint32_t nonce, const uint8_t* result, const uint8_t* extra_data)
 {
-    submit(JobResult(job, nonce, result, nullptr, nullptr, miner_signature));
+    submit(JobResult(job, nonce, result, nullptr, nullptr, extra_data));
 }
 
 

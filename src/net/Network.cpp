@@ -207,6 +207,7 @@ void xmrig::Network::onLogin(IStrategy *, IClient *client, rapidjson::Document &
     params.AddMember("algo", algo, allocator);
 
 #   ifdef XMRIG_FEATURE_MO_BENCHMARK
+    // MoneroOcean: advertise local algo-perf so pools can choose the most profitable algo.
     Value algo_perf(kObjectType);
 
     for (const auto &a : algorithms) {
@@ -219,6 +220,7 @@ void xmrig::Network::onLogin(IStrategy *, IClient *client, rapidjson::Document &
     if (algo_min_time > 0) {
         params.AddMember("algo-min-time", algo_min_time, allocator);
     }
+    // End MoneroOcean
 #   endif
 }
 

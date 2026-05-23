@@ -242,9 +242,6 @@ void xmrig::DaemonClient::setPool(const Pool &pool)
         m_coin = Coin::WOWNERO;
     }
 
-    if (!m_coin.isValid() && pool.algorithm() == Algorithm::RX_XEQ) {
-        m_coin = Coin::XEQ;
-    }
 }
 
 
@@ -414,6 +411,7 @@ bool xmrig::DaemonClient::parseJob(const rapidjson::Value &params, int *code)
         m_blocktemplate.offset(BlockTemplate::TX_EXTRA_NONCE_OFFSET) - k,
         m_blocktemplate.txExtraNonce().size(),
         m_blocktemplate.minerTxMerkleTreeBranch(),
+        m_blocktemplate.minerTxMerkleTreePath(),
         m_blocktemplate.outputType() == 3
     );
 #   endif

@@ -74,7 +74,9 @@ namespace randomx {
 	constexpr int SuperscalarMaxSize = 3 * RANDOMX_SUPERSCALAR_MAX_LATENCY + 2;
 	constexpr size_t CacheLineSize = RANDOMX_DATASET_ITEM_SIZE;
 	#define ScratchpadSize RandomX_CurrentConfig.ScratchpadL3_Size
+	// MoneroOcean: fork RandomX variants can change the dataset base size at runtime.
         #define CacheLineAlignMask RandomX_CurrentConfig.CacheLineAlignMask_Calculated
+	// End MoneroOcean
 	#define DatasetExtraItems RandomX_ConfigurationBase::DatasetExtraItems_Calculated
 	constexpr int StoreL3Condition = 14;
 
@@ -111,6 +113,10 @@ namespace randomx {
 	#define RANDOMX_HAVE_COMPILER 1
 	class JitCompilerA64;
 	using JitCompiler = JitCompilerA64;
+#elif defined(__riscv) && defined(__riscv_xlen) && (__riscv_xlen == 64)
+	#define RANDOMX_HAVE_COMPILER 1
+	class JitCompilerRV64;
+	using JitCompiler = JitCompilerRV64;
 #else
 	#define RANDOMX_HAVE_COMPILER 0
 	class JitCompilerFallback;

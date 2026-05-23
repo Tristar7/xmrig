@@ -37,7 +37,9 @@
 #include "crypto/rx/RxDataset.h"
 #include "crypto/rx/RxVm.h"
 #include "crypto/ghostrider/ghostrider.h"
+// MoneroOcean: Flex/KCN is a single-hash CPU path layered beside GhostRider.
 #include "crypto/flex/flex.h"
+// End MoneroOcean
 #include "net/JobResults.h"
 
 
@@ -88,14 +90,14 @@ xmrig::CpuWorker<N>::CpuWorker(size_t id, const CpuLaunchData &data) :
         if (!cn_heavyZen3Memory) {
             // Round up number of threads to the multiple of 8
             const size_t num_threads = ((m_threads + 7) / 8) * 8;
-            cn_heavyZen3Memory = new VirtualMemory(m_algorithm.l3() * num_threads, data.hugePages, false, false, node());
+            cn_heavyZen3Memory = new VirtualMemory(m_algorithm.l3() * num_threads, data.hugePages, false, false, node(), VirtualMemory::kDefaultHugePageSize);
         }
         m_memory = cn_heavyZen3Memory;
     }
     else
 #   endif
     {
-        m_memory = new VirtualMemory(m_algorithm.l3() * N, data.hugePages, false, true, node());
+        m_memory = new VirtualMemory(m_algorithm.l3() * N, data.hugePages, false, true, node(), VirtualMemory::kDefaultHugePageSize);
     }
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
@@ -169,6 +171,7 @@ bool xmrig::CpuWorker<N>::selfTest()
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
     if (m_algorithm.family() == Algorithm::GHOSTRIDER) {
+        // MoneroOcean: Flex/KCN has its own single-hash self-test vector.
         switch (m_algorithm.id()) {
             case Algorithm::GHOSTRIDER_RTM:
                 return (N == 8) && verify(Algorithm::GHOSTRIDER_RTM, test_output_gr);
@@ -176,10 +179,19 @@ bool xmrig::CpuWorker<N>::selfTest()
                 return (N == 1) && verify(Algorithm::FLEX_KCN, test_output_flex);
             default:;
         }
+        // End MoneroOcean
     }
 #   endif
 
     if (m_algorithm.family() == Algorithm::CN) {
+#       ifdef XMRIG_ALGO_CN_GPU
+        // MoneroOcean: CN-GPU has only a single-hash CPU implementation.
+        if (m_algorithm == Algorithm::CN_GPU) {
+            return (N == 1) && verify(Algorithm::CN_GPU, test_output_gpu);
+        }
+        // End MoneroOcean
+#       endif
+
         const bool rc = verify(Algorithm::CN_0,      test_output_v0)   &&
                         verify(Algorithm::CN_1,      test_output_v1)   &&
                         verify(Algorithm::CN_2,      test_output_v2)   &&
@@ -192,17 +204,8 @@ bool xmrig::CpuWorker<N>::selfTest()
                         verify(Algorithm::CN_ZLS,    test_output_zls)  &&
                         verify(Algorithm::CN_CCX,    test_output_ccx)  &&
                         verify(Algorithm::CN_DOUBLE, test_output_double)
-#                       ifdef XMRIG_ALGO_CN_GPU
-                        &&
-                        verify(Algorithm::CN_GPU,    test_output_gpu)
-#                       endif
                         ;
 
-#       ifdef XMRIG_ALGO_CN_GPU
-        if (! (!rc || N > 1)) {
-            return verify(Algorithm::CN_GPU, test_output_gpu);
-        } else
-#       endif
         return rc;
     }
 
@@ -273,7 +276,10 @@ void xmrig::CpuWorker<N>::start()
 
 #       ifdef XMRIG_ALGO_RANDOMX
         bool first = true;
-        alignas(16) uint64_t tempHash[8] = {};
+        alignas(64) uint64_t tempHash[8] = {};
+
+        size_t prev_job_size = 0;
+        alignas(64) uint8_t prev_job[Job::kMaxBlobSize] = {};
 #       endif
 
         while (!Nonce::isOutdated(Nonce::CPU, m_job.sequence())) {
@@ -314,7 +320,13 @@ void xmrig::CpuWorker<N>::start()
                     if (job.hasMinerSignature()) {
                         job.generateMinerSignature(m_job.blob(), job.size(), miner_signature_ptr);
                     }
+                    // MoneroOcean: pass the job algorithm through RandomX first/next calls for fork variants.
                     randomx_calculate_hash_first(m_vm, tempHash, m_job.blob(), job.size(), job.algorithm());
+
+                    if (RandomX_CurrentConfig.Tweak_V2_COMMITMENT) {
+                        prev_job_size = job.size();
+                        memcpy(prev_job, m_job.blob(), prev_job_size);
+                    }
                 }
 
                 if (!nextRound()) {
@@ -325,7 +337,16 @@ void xmrig::CpuWorker<N>::start()
                     memcpy(miner_signature_saved, miner_signature_ptr, sizeof(miner_signature_saved));
                     job.generateMinerSignature(m_job.blob(), job.size(), miner_signature_ptr);
                 }
+
                 randomx_calculate_hash_next(m_vm, tempHash, m_job.blob(), job.size(), m_hash, job.algorithm());
+                // End MoneroOcean
+
+                if (RandomX_CurrentConfig.Tweak_V2_COMMITMENT) {
+                    memcpy(m_commitment, m_hash, RANDOMX_HASH_SIZE);
+                    randomx_calculate_commitment(prev_job, prev_job_size, m_hash, m_hash);
+                    prev_job_size = job.size();
+                    memcpy(prev_job, m_job.blob(), prev_job_size);
+                }
             }
             else
 #           endif
@@ -334,6 +355,7 @@ void xmrig::CpuWorker<N>::start()
 
 #               ifdef XMRIG_ALGO_GHOSTRIDER
                 case Algorithm::GHOSTRIDER:
+                    // MoneroOcean: Flex/KCN reuses the GhostRider family slot with single-hash dispatch.
                     switch (job.algorithm()) {
                         case Algorithm::GHOSTRIDER_RTM:
                             if (N == 8) {
@@ -352,6 +374,7 @@ void xmrig::CpuWorker<N>::start()
                         default:
                             valid = false;
                     }
+                    // End MoneroOcean
                     break;
 #               endif
 
@@ -377,8 +400,20 @@ void xmrig::CpuWorker<N>::start()
                     }
                     else
 #                   endif
+
                     if (value < job.target()) {
-                        JobResults::submit(job, current_job_nonces[i], m_hash + (i * 32), job.hasMinerSignature() ? miner_signature_saved : nullptr);
+                        uint8_t* extra_data = nullptr;
+
+                        if (job.algorithm().family() == Algorithm::RANDOM_X) {
+                            if (RandomX_CurrentConfig.Tweak_V2_COMMITMENT) {
+                                extra_data = m_commitment;
+                            }
+                            else if (job.hasMinerSignature()) {
+                                extra_data = miner_signature_saved;
+                            }
+                        }
+
+                        JobResults::submit(job, current_job_nonces[i], m_hash + (i * 32), extra_data);
                     }
                 }
                 m_count += N;
@@ -419,6 +454,7 @@ template<size_t N>
 bool xmrig::CpuWorker<N>::verify(const Algorithm &algorithm, const uint8_t *referenceValue)
 {
 #   ifdef XMRIG_ALGO_GHOSTRIDER
+    // MoneroOcean: Flex/KCN uses its own deterministic test header and finalizer.
     switch (algorithm) {
       case Algorithm::GHOSTRIDER_RTM: {
         uint8_t blob[N * 80] = {};
@@ -461,6 +497,7 @@ bool xmrig::CpuWorker<N>::verify(const Algorithm &algorithm, const uint8_t *refe
       }
       default:;
     }
+    // End MoneroOcean
 #   endif
 
     cn_hash_fun func = fn(algorithm);
@@ -582,4 +619,3 @@ template class CpuWorker<5>;
 template class CpuWorker<8>;
 
 } // namespace xmrig
-

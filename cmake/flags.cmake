@@ -28,6 +28,11 @@ if (CMAKE_CXX_COMPILER_ID MATCHES GNU)
     elseif (ARM_TARGET EQUAL 7)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv7-a -mfpu=neon -flax-vector-conversions")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv7-a -mfpu=neon -flax-vector-conversions")
+    elseif (XMRIG_RISCV)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${RVARCH}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${RVARCH}")
+        
+        add_definitions(-DHAVE_ROTR)
     else()
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -maes")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -maes")
@@ -35,15 +40,19 @@ if (CMAKE_CXX_COMPILER_ID MATCHES GNU)
         add_definitions(-DHAVE_ROTR)
     endif()
 
+    # MoneroOcean: MSYS links like the Windows GNU toolchain.
     if (WIN32 OR CMAKE_SYSTEM_NAME MATCHES "MSYS")
         if (CMAKE_SIZEOF_VOID_P EQUAL 8)
             set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
         else()
             set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -Wl,--large-address-aware")
         endif()
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Haiku")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc")
     else()
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
     endif()
+    # End MoneroOcean
 
     if (BUILD_STATIC)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
@@ -74,6 +83,11 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES Clang)
     elseif (ARM_TARGET EQUAL 7)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpu=neon -march=${CMAKE_SYSTEM_PROCESSOR}")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon -march=${CMAKE_SYSTEM_PROCESSOR}")
+    elseif (XMRIG_RISCV)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=${RVARCH}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${RVARCH}")
+        
+        add_definitions(-DHAVE_ROTR)
     else()
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -maes")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -maes")
@@ -84,14 +98,18 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES Clang)
         endif()
     endif()
 
+    # MoneroOcean: keep MSYS ARM/static behavior aligned with Windows.
     if (((WIN32 OR CMAKE_SYSTEM_NAME MATCHES "MSYS") AND ARM_TARGET) OR BUILD_STATIC)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
     endif()
+    # End MoneroOcean
 endif()
 
+# MoneroOcean: MSYS uses Windows cache-flush behavior, not POSIX builtin probing.
 if (NOT WIN32 AND NOT CMAKE_SYSTEM_NAME MATCHES "MSYS")
     check_symbol_exists("__builtin___clear_cache" "stdlib.h" HAVE_BUILTIN_CLEAR_CACHE)
     if (HAVE_BUILTIN_CLEAR_CACHE)
         add_definitions(-DHAVE_BUILTIN_CLEAR_CACHE)
     endif()
 endif()
+# End MoneroOcean

@@ -59,6 +59,7 @@
 #   include "crypto/rx/Profiler.h"
 #   include "crypto/rx/Rx.h"
 #   include "crypto/rx/RxConfig.h"
+#   include "crypto/rx/RxAlgo.h"
 #endif
 
 
@@ -334,9 +335,11 @@ public:
         avg_hashrate_buf[0] = '\0';
 
 #       ifdef XMRIG_ALGO_GHOSTRIDER
+        // MoneroOcean: Flex/KCN is GhostRider family but should not use GhostRider avg scaling.
         if (algorithm.id() == Algorithm::GHOSTRIDER_RTM) {
             snprintf(avg_hashrate_buf, sizeof(avg_hashrate_buf), " avg " CYAN_BOLD("%s %s"), Hashrate::format({ true, avg_hashrate * scale }, num + 16 * 4, 16), h);
         }
+        // End MoneroOcean
 #       endif
 
         LOG_INFO("%s " WHITE_BOLD("speed") " 10s/60s/15m " CYAN_BOLD("%s") CYAN(" %s %s ") CYAN_BOLD("%s") " max " CYAN_BOLD("%s %s") "%s",
@@ -556,11 +559,12 @@ void xmrig::Miner::setJob(const Job &job, bool donate)
     }
 
 #   ifdef XMRIG_ALGO_RANDOMX
-    if (job.algorithm().family() == Algorithm::RANDOM_X && !Rx::isReady(job)) {
+    if (job.algorithm().family() == Algorithm::RANDOM_X) {
         if (d_ptr->algorithm != job.algorithm()) {
             stop();
+            RxAlgo::apply(job.algorithm());
         }
-        else {
+        else if (!Rx::isReady(job)) {
             Nonce::pause(true);
             Nonce::touch();
         }
@@ -572,6 +576,7 @@ void xmrig::Miner::setJob(const Job &job, bool donate)
     mutex.lock();
 
     const uint8_t index = donate ? 1 : 0;
+    const bool same_job_index = d_ptr->job.index() == index;
 
     d_ptr->reset = !(d_ptr->job.index() == 1 && index == 0 && d_ptr->userJobId == job.id());
 
@@ -591,7 +596,8 @@ void xmrig::Miner::setJob(const Job &job, bool donate)
     const bool ready = d_ptr->initRX();
 
     // Always reset nonce on RandomX dataset change
-    if (!ready) {
+    // Except for switching to/from donation
+    if (!ready && same_job_index) {
         d_ptr->reset = true;
     }
 #   else
@@ -599,9 +605,11 @@ void xmrig::Miner::setJob(const Job &job, bool donate)
 #   endif
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
+    // MoneroOcean: Flex/KCN is GhostRider family but does not need GhostRider helper state.
     if (job.algorithm().id() == Algorithm::GHOSTRIDER_RTM) {
         d_ptr->initGhostRider();
     }
+    // End MoneroOcean
 #   endif
 
     mutex.unlock();

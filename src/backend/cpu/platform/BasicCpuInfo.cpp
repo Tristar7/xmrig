@@ -58,8 +58,8 @@
 namespace xmrig {
 
 
-constexpr size_t kCpuFlagsSize                                  = 15;
-static const std::array<const char *, kCpuFlagsSize> flagNames  = { "aes", "vaes", "avx", "avx2", "avx512f", "bmi2", "osxsave", "pdpe1gb", "sse2", "ssse3", "sse4.1", "xop", "popcnt", "cat_l3", "vm" };
+constexpr size_t kCpuFlagsSize                                  = 16;
+static const std::array<const char *, kCpuFlagsSize> flagNames  = { "aes", "vaes", "avx", "avx2", "avx512f", "bmi2", "osxsave", "pdpe1gb", "sse2", "ssse3", "sse4.1", "xop", "popcnt", "cat_l3", "vm", "rvv" };
 static_assert(kCpuFlagsSize == ICpuInfo::FLAG_MAX, "kCpuFlagsSize and FLAG_MAX mismatch");
 
 
@@ -250,7 +250,7 @@ xmrig::BasicCpuInfo::BasicCpuInfo() :
                     break;
 
                 case 0x19:
-                    if (m_model == 0x61) {
+                    if ((m_model == 0x61) || (m_model == 0x75)) {
                         m_arch = ARCH_ZEN4;
                         m_msrMod = MSR_MOD_RYZEN_19H_ZEN4;
                     }
@@ -323,6 +323,7 @@ const char *xmrig::BasicCpuInfo::backend() const
 }
 
 
+// MoneroOcean: generated CPU profiles respect max thread limits for fork algo switching.
 xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint32_t limit) const
 {
     const uint32_t count = std::thread::hardware_concurrency();
@@ -361,9 +362,11 @@ xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint3
 #   endif
 
 #   ifdef XMRIG_ALGO_CN_GPU
+    // MoneroOcean: CN-GPU CPU fallback uses one hash per worker.
     if (algorithm == Algorithm::CN_GPU) {
         return count_limit;
     }
+    // End MoneroOcean
 #   endif
 
 #   ifdef XMRIG_ALGO_RANDOMX
@@ -372,6 +375,7 @@ xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint3
             return count_limit;
         }
 
+        // MoneroOcean: Panthera/Scala uses one worker per selected physical-ish CPU slot.
         if (algorithm == Algorithm::RX_XLA) {
             CpuThreads threads;
             for (size_t i = 0; i < count_limit2; ++i) {
@@ -379,6 +383,7 @@ xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint3
             }
             return threads;
         }
+        // End MoneroOcean
 
         return count_limit2;
     }
@@ -391,16 +396,19 @@ xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint3
 #   endif
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
+    // MoneroOcean: Flex/KCN shares GhostRider family profile generation but is single-hash.
     switch (algorithm.id()) {
         case Algorithm::GHOSTRIDER_RTM: return CpuThreads(std::max<size_t>(count_limit2, 1), 8);
         case Algorithm::FLEX_KCN:       return CpuThreads(std::max<size_t>(count_limit2, 1), 1);
         default:
             break;
     }
+    // End MoneroOcean
 #   endif
 
     return CpuThreads(count_limit2, 1);
 }
+// End MoneroOcean
 
 
 rapidjson::Value xmrig::BasicCpuInfo::toJSON(rapidjson::Document &doc) const
